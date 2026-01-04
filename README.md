@@ -311,4 +311,3 @@ See [docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md) for complete API reference 
 - [kijani-spiral](https://github.com/RydlrCS/kijani-spiral) - NPC animation engine
 - [fivetran_connector_sdk](https://github.com/RydlrCS/fivetran_connector_sdk) - Motionblend connector
 
-## Acknowledgments
