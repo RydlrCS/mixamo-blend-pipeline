@@ -154,16 +154,14 @@ def main():
 
     # Create blend configuration
     config = BlendConfig(
-        input1_path=args.input1,
-        input2_path=args.input2,
-        output_path=args.output,
-        blend_ratio=args.ratio,
-        blend_method=args.method,
+        source_animation=args.input1,
+        target_animation=args.input2,
+        blend_mode="single-shot",
     )
 
     try:
         # Attempt blend (placeholder implementation)
-        result = blend_animations(config)
+        result = blend_animations(config, output_path=args.output)
 
         if result.success:
             print(f"✅ Blend successful!")

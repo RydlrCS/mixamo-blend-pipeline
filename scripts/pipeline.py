@@ -240,11 +240,9 @@ def run_blend_step(args, work_dir: Path, input1: str, input2: str) -> Optional[s
 
     # Blend animations
     config = BlendConfig(
-        input1_path=input1,
-        input2_path=input2,
-        output_path=output_path,
-        blend_ratio=args.ratio,
-        blend_method=args.method,
+        source_animation=input1,
+        target_animation=input2,
+        blend_mode="single-shot",
     )
 
     print(f"\nBlending:")
@@ -257,7 +255,7 @@ def run_blend_step(args, work_dir: Path, input1: str, input2: str) -> Optional[s
 
     if not result.success:
         print(f"❌ Blend failed")
-        print(f"   Error: {result.error_message}")
+        print(f"   Error: {result.error_message_message}")
         return None
 
     print(f"✅ Blended: {result.output_path}")
@@ -302,7 +300,7 @@ def run_upload_step(args, file_path: str) -> bool:
 
     if not result.success:
         print(f"❌ Upload failed")
-        print(f"   Error: {result.error_message}")
+        print(f"   Error: {result.error_message_message}")
         return False
 
     print(f"✅ Uploaded: {result.gcs_uri}")
@@ -412,10 +410,9 @@ def run_blend_batch_workflow(config: dict) -> int:
         try:
             # Create blend config
             blend_config = BlendConfig(
-                input1_path=input1,
-                input2_path=input2,
-                blend_ratio=ratio,
-                method=method,
+                source_animation=input1,
+                target_animation=input2,
+                blend_mode="single-shot",
             )
 
             # Execute blend
@@ -425,7 +422,7 @@ def run_blend_batch_workflow(config: dict) -> int:
                 print(f"   ✅ Success")
                 successful += 1
             else:
-                print(f"   ❌ Failed: {result.error}")
+                print(f"   ❌ Failed: {result.error_message}")
                 failed += 1
 
         except Exception as e:
