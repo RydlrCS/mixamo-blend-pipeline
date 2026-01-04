@@ -23,10 +23,14 @@ from .blender import (
     save_bvh,
 )
 
+# Alias for CLI convenience
+blend_animations = blend_motions
+
 __all__ = [
     "BlendConfig",
     "BlendResult",
     "blend_motions",
+    "blend_animations",  # Alias
     "blend_batch",
     "load_bvh",
     "save_bvh",

@@ -36,7 +36,7 @@ Examples:
   # Simple 50/50 blend
   %(prog)s walk.bvh run.bvh -o walk_run_blend.bvh
 
-  # 70% walk, 30% run
+  # 70%% walk, 30%% run
   %(prog)s walk.bvh run.bvh --ratio 0.3 -o output.bvh
 
   # Use SNN blending method
@@ -71,7 +71,10 @@ Examples:
         "--ratio",
         type=float,
         default=0.5,
-        help="Blend ratio (0.0-1.0, default: 0.5). " "0.0 = 100%% input1, 1.0 = 100%% input2",
+        help=(
+            "Blend ratio (0.0-1.0, default: 0.5). "
+            "0.0 = all input1, 1.0 = all input2"
+        ),
     )
 
     parser.add_argument(

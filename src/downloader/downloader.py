@@ -44,6 +44,26 @@ MIN_FILE_SIZE_BYTES = 1024  # Minimum valid animation file size (1 KB)
 
 
 @dataclass
+class DownloadConfig:
+    """
+    Configuration for animation download operations.
+
+    Attributes:
+        animation_id: Mixamo animation ID to download
+        output_path: Local file path where animation will be saved
+        format: Animation file format - "fbx" or "bvh" (default: "fbx")
+        overwrite: Whether to overwrite existing files (default: False)
+        max_retries: Maximum number of retry attempts (default: 3)
+    """
+
+    animation_id: str
+    output_path: str
+    format: str = "fbx"
+    overwrite: bool = False
+    max_retries: int = MAX_RETRIES
+
+
+@dataclass
 class DownloadResult:
     """
     Result of an animation download operation.
