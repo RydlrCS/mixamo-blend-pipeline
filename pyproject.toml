@@ -1,0 +1,53 @@
+[project]
+name = "mixamo-blend-pipeline"
+version = "0.1.0"
+description = "Production pipeline for Mixamo animation blending with blendanim framework"
+authors = [
+    {name = "Ted Iro", email = "ted@rydlrcloudservices.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://github.com/RydlrCS/mixamo-blend-pipeline"
+Repository = "https://github.com/RydlrCS/mixamo-blend-pipeline"
+
+[tool.black]
+line-length = 99
+target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers"
+testpaths = [
+    "tests",
+]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false

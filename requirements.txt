@@ -1,0 +1,27 @@
+# Core dependencies
+# Note: Do NOT include fivetran-connector-sdk or requests here
+# (provided by Fivetran runtime as per project guidelines)
+
+# Google Cloud
+google-cloud-storage==2.18.2
+
+# Data processing
+numpy>=1.24.0,<2.0.0
+pyyaml>=6.0.0
+
+# Development tools
+black==24.1.0
+flake8==7.0.0
+mypy==1.8.0
+pytest==8.0.0
+pytest-cov==4.1.0
+
+# Type stubs
+types-PyYAML>=6.0.0
+types-requests>=2.31.0
+
+# Logging
+coloredlogs>=15.0.0
+
+# Spell checking
+pyspelling>=2.10.0
