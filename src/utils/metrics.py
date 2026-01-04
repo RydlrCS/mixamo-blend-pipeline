@@ -2,13 +2,16 @@
 Prometheus metrics for production monitoring.
 
 Provides instrumentation for key pipeline operations with standardized
-Prometheus metrics. Tracks success/failure rates, latencies, and resource usage.
+Prometheus metrics. Tracks success/failure rates, latencies, resource usage,
+and agent/mission performance metrics (from kijani-spiral).
 
 Author: Ted Iro
 Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
 Date: January 4, 2026
 
 Metrics Provided:
+
+Pipeline Operations:
     - blend_requests_total: Counter for blend operations
     - blend_duration_seconds: Histogram for blend latency
     - upload_bytes_total: Counter for uploaded bytes
@@ -18,9 +21,30 @@ Metrics Provided:
     - worker_pool_utilization: Gauge for worker utilization
     - queue_depth: Gauge for pending jobs
 
+Agent/Mission Performance (from kijani-spiral):
+    - simulations_total: Counter for simulations/missions
+    - simulation_duration_seconds: Histogram for simulation duration
+    - agent_health: Gauge for agent health status
+    - agent_morale: Gauge for agent morale level
+    - agent_energy: Gauge for agent energy level
+    - total_reward: Counter for cumulative rewards
+    - objectives_completed: Gauge for objectives completed
+    - average_health: Gauge for average agent health
+    - agent_final_reward: Summary of per-agent rewards
+    - agent_performance_total: Counter for performance records
+
+Visualizations:
+    See src.utils.visualizations for charting functions including:
+    - Radar charts for agent capabilities
+    - Reward and performance curves
+    - Mission timeline animations (GIF)
+    - Summary tables and statistics
+    - Complete dashboards
+
 Usage:
     # In application code:
     from src.utils.metrics import metrics
+    from src.utils.visualizations import create_reward_curve
     
     # Track operation
     with metrics.blend_duration.time():
@@ -30,6 +54,21 @@ Usage:
         metrics.blend_requests.labels(status="success").inc()
     else:
         metrics.blend_requests.labels(status="failure").inc()
+    
+    # Track mission results
+    with metrics.track_simulation():
+        results = run_simulation()
+    
+    metrics.record_simulation_results(
+        total_reward=results['reward'],
+        objectives_completed=results['objectives'],
+        average_health=results['avg_health'],
+        agent_rewards=results['agent_rewards']
+    )
+    
+    # Visualize metrics
+    fig = create_reward_curve(reward_history)
+    plt.show()
     
     # Start metrics server:
     python -m src.utils.metrics --port 9090
@@ -238,6 +277,94 @@ class PrometheusMetrics:
         # Application Info
         # ====================================================================
         
+        # ====================================================================
+        # Agent/Mission Performance Metrics (from kijani-spiral)
+        # ====================================================================
+        
+        # Counter: Total simulations/missions run
+        self.simulations_total = Counter(
+            name="simulations_total",
+            documentation="Total simulations/missions run",
+            labelnames=["status"],  # success, failure
+            registry=self.registry,
+        )
+        
+        # Histogram: Simulation/mission duration
+        self.simulation_duration = Histogram(
+            name="simulation_duration_seconds",
+            documentation="Simulation/mission duration in seconds",
+            buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0],
+            registry=self.registry,
+        )
+        
+        # Gauge: Agent health (average across all agents)
+        self.agent_health = Gauge(
+            name="agent_health",
+            documentation="Agent health status (0-100)",
+            labelnames=["agent_id"],  # Specific agent
+            registry=self.registry,
+        )
+        
+        # Gauge: Agent morale
+        self.agent_morale = Gauge(
+            name="agent_morale",
+            documentation="Agent morale level",
+            labelnames=["agent_id"],
+            registry=self.registry,
+        )
+        
+        # Gauge: Agent energy
+        self.agent_energy = Gauge(
+            name="agent_energy",
+            documentation="Agent energy level (0-100)",
+            labelnames=["agent_id"],
+            registry=self.registry,
+        )
+        
+        # Counter: Total reward from simulations
+        self.total_reward = Counter(
+            name="total_reward",
+            documentation="Cumulative reward from simulations",
+            registry=self.registry,
+        )
+        
+        # Gauge: Total reward from last simulation
+        self.last_simulation_reward = Gauge(
+            name="last_simulation_reward",
+            documentation="Total reward from most recent simulation",
+            registry=self.registry,
+        )
+        
+        # Gauge: Objectives completed
+        self.objectives_completed = Gauge(
+            name="objectives_completed",
+            documentation="Number of objectives completed in last mission",
+            registry=self.registry,
+        )
+        
+        # Gauge: Average health from last simulation
+        self.average_health = Gauge(
+            name="average_health",
+            documentation="Average agent health from last simulation",
+            registry=self.registry,
+        )
+        
+        # Summary: Per-agent final rewards
+        self.agent_final_reward = Summary(
+            name="agent_final_reward",
+            documentation="Final reward per agent",
+            labelnames=["agent_id"],
+            registry=self.registry,
+        )
+        
+        # Counter: Agent performance metrics
+        self.agent_performance_total = Counter(
+            name="agent_performance_total",
+            documentation="Total agent performance records",
+            labelnames=["agent_id", "metric_type"],  # metric_type: health, morale, energy
+            registry=self.registry,
+        )
+        
         # Info: Application metadata
         self.app_info = Info(
             name="application",
@@ -384,6 +511,131 @@ class PrometheusMetrics:
             return
         
         self.gcs_api_errors.labels(operation=operation, error_type=error_type).inc()
+    
+    # ========================================================================
+    # Mission/Simulation Tracking Methods (from kijani-spiral)
+    # ========================================================================
+    
+    def record_simulation_success(self):
+        """Record successful simulation/mission."""
+        if not self.enabled:
+            return
+        
+        self.simulations_total.labels(status="success").inc()
+    
+    def record_simulation_failure(self):
+        """Record failed simulation/mission."""
+        if not self.enabled:
+            return
+        
+        self.simulations_total.labels(status="failure").inc()
+    
+    def track_simulation(self):
+        """
+        Context manager for tracking simulation duration.
+        
+        Example:
+            >>> with metrics.track_simulation():
+            ...     results = simulator.run_simulation()
+        """
+        if not self.enabled:
+            from contextlib import nullcontext
+            return nullcontext()
+        
+        return self.simulation_duration.time()
+    
+    def record_agent_health(self, agent_id: str, health: float):
+        """
+        Record agent health metric.
+        
+        Args:
+            agent_id: Identifier for the agent
+            health: Health value (typically 0-100)
+        """
+        if not self.enabled:
+            return
+        
+        self.agent_health.labels(agent_id=agent_id).set(health)
+        self.agent_performance_total.labels(agent_id=agent_id, metric_type="health").inc()
+    
+    def record_agent_morale(self, agent_id: str, morale: float):
+        """
+        Record agent morale metric.
+        
+        Args:
+            agent_id: Identifier for the agent
+            morale: Morale value
+        """
+        if not self.enabled:
+            return
+        
+        self.agent_morale.labels(agent_id=agent_id).set(morale)
+        self.agent_performance_total.labels(agent_id=agent_id, metric_type="morale").inc()
+    
+    def record_agent_energy(self, agent_id: str, energy: float):
+        """
+        Record agent energy metric.
+        
+        Args:
+            agent_id: Identifier for the agent
+            energy: Energy value (typically 0-100)
+        """
+        if not self.enabled:
+            return
+        
+        self.agent_energy.labels(agent_id=agent_id).set(energy)
+        self.agent_performance_total.labels(agent_id=agent_id, metric_type="energy").inc()
+    
+    def record_agent_final_reward(self, agent_id: str, reward: float):
+        """
+        Record final reward for an agent.
+        
+        Args:
+            agent_id: Identifier for the agent
+            reward: Final reward value
+        """
+        if not self.enabled:
+            return
+        
+        self.agent_final_reward.labels(agent_id=agent_id).observe(reward)
+        self.total_reward.inc(reward)
+    
+    def record_simulation_results(
+        self,
+        total_reward: float,
+        objectives_completed: int,
+        average_health: float,
+        agent_rewards: Optional[dict] = None,
+    ):
+        """
+        Record complete simulation results.
+        
+        Args:
+            total_reward: Total reward from the simulation
+            objectives_completed: Number of objectives completed
+            average_health: Average health across all agents
+            agent_rewards: Dict of {agent_id: reward} for per-agent tracking
+        
+        Example:
+            >>> metrics.record_simulation_results(
+            ...     total_reward=125.5,
+            ...     objectives_completed=3,
+            ...     average_health=85.2,
+            ...     agent_rewards={"agent1": 42.0, "agent2": 83.5}
+            ... )
+        """
+        if not self.enabled:
+            return
+        
+        self.last_simulation_reward.set(total_reward)
+        self.total_reward.inc(total_reward)
+        self.objectives_completed.set(objectives_completed)
+        self.average_health.set(average_health)
+        
+        # Record per-agent rewards if provided
+        if agent_rewards:
+            for agent_id, reward in agent_rewards.items():
+                self.record_agent_final_reward(agent_id, reward)
 
 
 # ============================================================================
