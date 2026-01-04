@@ -23,9 +23,21 @@ from typing import Optional, List, Dict
 from dataclasses import dataclass, field
 
 from src.utils.logging import get_logger, log_function_call
+from src.utils.retry import retry_with_backoff, CircuitBreaker
+from src.utils.metrics import get_metrics
 
 # Module logger
 logger = get_logger(__name__)
+
+# Module metrics
+metrics = get_metrics()
+
+# Circuit breaker for GCS operations (fail fast if GCS is down)
+gcs_circuit_breaker = CircuitBreaker(
+    failure_threshold=5,
+    timeout=60.0,
+    expected_exception=Exception,
+)
 
 # Configuration constants
 MAX_RETRIES = 3
@@ -255,45 +267,29 @@ def upload_file(local_path: str, config: UploadConfig) -> UploadResult:
     )
     gcs_uri = f"gs://{config.bucket_name}/{destination_blob}"
 
-    # Perform GCS upload with error handling
-    from google.cloud import storage
+    # Perform GCS upload with error handling, retry, and metrics
     try:
-        logger.info(
-            f"Initializing GCS client for bucket: {config.bucket_name}"
-        )
-        client = storage.Client()
-        bucket = client.bucket(config.bucket_name)
-        blob = bucket.blob(destination_blob)
-
-        # Set metadata if provided
-        if config.metadata:
-            blob.metadata = config.metadata
-            logger.debug(f"Setting metadata: {config.metadata}")
-
-        # Set content type if provided
-        if config.content_type:
-            blob.content_type = config.content_type
-            logger.debug(f"Setting content type: {config.content_type}")
-
-        # Upload file with timeout
-        logger.info(
-            f"Uploading {file_size} bytes to {destination_blob} "
-            f"(timeout: {config.timeout_seconds}s)"
-        )
-        blob.upload_from_filename(
-            str(local_path_obj),
-            timeout=config.timeout_seconds
-        )
-
-        # Make public if requested
-        if config.make_public:
-            blob.make_public()
-            logger.info(f"Made blob public: {gcs_uri}")
+        # Track upload with metrics
+        with metrics.track_upload():
+            # Use retry decorator for resilient uploads
+            _perform_gcs_upload(
+                local_path_obj=local_path_obj,
+                config=config,
+                destination_blob=destination_blob,
+                file_size=file_size,
+            )
 
         duration = time.time() - start_time
         logger.info(
             f"Upload successful: {gcs_uri} "
             f"({file_size} bytes in {duration:.2f}s)"
+        )
+
+        # Record success metrics
+        folder = config.destination_folder.rstrip('/').split('/')[-1] or 'root'
+        metrics.record_upload_success(
+            bytes_uploaded=file_size,
+            destination=folder
         )
 
         return UploadResult(
@@ -310,6 +306,14 @@ def upload_file(local_path: str, config: UploadConfig) -> UploadResult:
         logger.error(error_msg, exc_info=True)
         duration = time.time() - start_time
 
+        # Record failure metrics
+        folder = config.destination_folder.rstrip('/').split('/')[-1] or 'root'
+        metrics.record_upload_failure(destination=folder)
+        
+        # Record GCS error metrics
+        error_type = type(e).__name__
+        metrics.record_gcs_error(operation="upload", error_type=error_type)
+
         return UploadResult(
             success=False,
             gcs_uri=None,
@@ -321,49 +325,197 @@ def upload_file(local_path: str, config: UploadConfig) -> UploadResult:
         )
 
 
-@log_function_call
-def upload_batch(
-    file_paths: List[str], config: UploadConfig
-) -> List[UploadResult]:
+@retry_with_backoff(
+    max_attempts=MAX_RETRIES,
+    base_delay=2.0,
+    max_delay=30.0,
+    backoff_multiplier=2.0,
+    jitter=True,
+    exceptions=(Exception,),
+)
+@gcs_circuit_breaker
+def _perform_gcs_upload(
+    local_path_obj: Path,
+    config: UploadConfig,
+    destination_blob: str,
+    file_size: int,
+) -> None:
     """
-    Upload multiple files to GCS in batch.
+    Internal function to perform GCS upload with retry logic.
+    
+    This function is decorated with retry_with_backoff and circuit_breaker
+    to provide resilient uploads with exponential backoff.
+    
+    Args:
+        local_path_obj: Path object for local file
+        config: Upload configuration
+        destination_blob: GCS blob destination path
+        file_size: File size in bytes
+    
+    Raises:
+        Exception: If upload fails after all retries
+    
+    Note:
+        This function is internal and should not be called directly.
+        Use upload_file() instead.
+    """
+    from google.cloud import storage
+    
+    logger.debug(
+        f"Executing GCS upload: {local_path_obj.name} -> {destination_blob}"
+    )
+    
+    # Initialize GCS client and perform upload
+    client = storage.Client()
+    bucket = client.bucket(config.bucket_name)
+    blob = bucket.blob(destination_blob)
 
-    Processes uploads sequentially with individual error handling. Each file
-    upload is independent - failures don't stop processing.
+    # Set metadata if provided
+    if config.metadata:
+        blob.metadata = config.metadata
+        logger.debug(f"Setting metadata: {config.metadata}")
+
+    # Set content type if provided
+    if config.content_type:
+        blob.content_type = config.content_type
+        logger.debug(f"Setting content type: {config.content_type}")
+
+    # Upload file with timeout
+    logger.info(
+        f"Uploading {file_size} bytes to {destination_blob} "
+        f"(timeout: {config.timeout_seconds}s)"
+    )
+    
+    # Track GCS API duration
+    with metrics.gcs_api_duration.labels(operation="upload").time():
+        blob.upload_from_filename(
+            str(local_path_obj),
+            timeout=config.timeout_seconds
+        )
+
+    # Make public if requested
+    if config.make_public:
+        blob.make_public()
+        logger.info(f"Made blob public: {destination_blob}")
+
+
+@log_function_call
+def upload_file(local_path: str, config: UploadConfig) -> UploadResult:
+    """
+    Upload a single file to Google Cloud Storage.
+
+    Validates file existence and size, uploads to GCS bucket with metadata,
+    and optionally makes the file public. Includes retry logic for transient
+    failures with exponential backoff and circuit breaker protection.
 
     Args:
-        file_paths: List of absolute paths to files to upload
-        config: UploadConfig applied to all uploads
+        local_path: Absolute path to local file to upload
+        config: UploadConfig with bucket and destination settings
 
     Returns:
-        List of UploadResult objects, one per input file
+        UploadResult with success status and details
 
     Example:
-        >>> config = UploadConfig(bucket_name="animations")
-        >>> results = upload_batch(
-        ...     ["./walk.bvh", "./run.bvh"],
-        ...     config
+        >>> config = UploadConfig(
+        ...     bucket_name="animations",
+        ...     destination_folder="seed/",
+        ...     metadata={"source": "mixamo"}
         ... )
-        >>> successful = sum(1 for r in results if r.success)
-        >>> print(f"{successful}/{len(results)} uploads successful")
+        >>> result = upload_file("./walk.bvh", config)
+        >>> if result.success:
+        ...     print(f"Uploaded: {result.gcs_uri}")
+    
+    Note:
+        - Automatically retries on transient failures (up to MAX_RETRIES times)
+        - Uses exponential backoff with jitter to prevent thundering herd
+        - Circuit breaker protects against cascading failures when GCS is down
+        - Comprehensive metrics tracking for monitoring and alerting
     """
-    logger.info(
-        f"Processing batch upload: {len(file_paths)} files to "
-        f"{config.bucket_name}/{config.destination_folder}"
-    )
-    results: List[UploadResult] = []
+    logger.info(f"Uploading file: {local_path} to {config.bucket_name}")
+    start_time = time.time()
+    local_path_obj = Path(local_path)
 
-    if not file_paths:
-        logger.warning("Empty file_paths list provided")
-        return results
-
-    # Process each file
-    for i, file_path in enumerate(file_paths):
-        logger.info(
-            f"Uploading file {i+1}/{len(file_paths)}: {file_path}"
+    # Validate local file
+    if not local_path_obj.exists():
+        error_msg = f"File not found: {local_path}"
+        logger.error(error_msg)
+        return UploadResult(
+            success=False,
+            gcs_uri=None,
+            local_path=local_path,
+            upload_config=config,
+            file_size_bytes=0,
+            duration_seconds=time.time() - start_time,
+            error_message=error_msg,
         )
-        result = upload_file(file_path, config)
-        results.append(result)
+
+    if not local_path_obj.is_file():
+        error_msg = f"Path is not a file: {local_path}"
+        logger.error(error_msg)
+        return UploadResult(
+            success=False,
+            gcs_uri=None,
+            local_path=local_path,
+            upload_config=config,
+            file_size_bytes=0,
+            duration_seconds=time.time() - start_time,
+            error_message=error_msg,
+        )
+
+    # Check file size
+    file_size = local_path_obj.stat().st_size
+    if file_size < MIN_FILE_SIZE_BYTES:
+        error_msg = (
+            f"File too small: {file_size} < {MIN_FILE_SIZE_BYTES} bytes"
+        )
+        logger.error(error_msg)
+        return UploadResult(
+            success=False,
+            gcs_uri=None,
+            local_path=local_path,
+            upload_config=config,
+            file_size_bytes=file_size,
+            duration_seconds=time.time() - start_time,
+            error_message=error_msg,
+        )
+
+    max_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if file_size > max_size_bytes:
+        error_msg = (
+            f"File too large: {file_size} > {max_size_bytes} bytes "
+            f"({MAX_FILE_SIZE_MB}MB)"
+        )
+        logger.error(error_msg)
+        return UploadResult(
+            success=False,
+            gcs_uri=None,
+            local_path=local_path,
+            upload_config=config,
+            file_size_bytes=file_size,
+            duration_seconds=time.time() - start_time,
+            error_message=error_msg,
+        )
+
+    # Validate file extension
+    if local_path_obj.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        logger.warning(
+            f"Unusual file extension: {local_path_obj.suffix}. "
+            f"Supported: {SUPPORTED_EXTENSIONS}"
+        )
+
+    # Validate GCS path
+    if not validate_gcs_path(config.bucket_name, config.destination_folder):
+        error_msg = "Invalid GCS path configuration"
+        logger.error(error_msg)
+        return UploadResult(
+            success=False,
+            gcs_uri=None,
+            local_path=local_path,
+            upload_config=config,
+            file_size_bytes=file_size,
+            duration_seconds=time.time() - start_time,
+            error_message=error_msg,
+        )
 
     # Log summary
     successful = sum(1 for r in results if r.success)

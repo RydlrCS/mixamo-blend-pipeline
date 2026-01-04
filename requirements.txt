@@ -26,5 +26,8 @@ coloredlogs>=15.0.0
 # System monitoring
 psutil>=5.9.0
 
+# Metrics
+prometheus-client>=0.19.0
+
 # Spell checking
 pyspelling>=2.10.0
