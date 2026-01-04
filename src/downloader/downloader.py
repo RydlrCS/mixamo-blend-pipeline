@@ -1,26 +1,29 @@
 """
-Mixamo animation downloader implementation.
+Mixamo animation file validator and organizer.
 
-Provides functions for downloading animations from Mixamo's API with proper
-error handling, retry logic, and validation. Integrates with the
-mixamo_anims_downloader repository for core download functionality.
+NOTE: This module does NOT directly download from Mixamo's API.
+Use the browser-based scripts from mixamo_anims_downloader repository:
+https://github.com/RydlrCS/mixamo_anims_downloader
 
-This module handles:
-- Single animation downloads
-- Batch processing of multiple animations
-- File validation and integrity checks
+This module provides:
+- File validation for downloaded animations (FBX/BVH format checks)
+- Batch file organization and metadata tracking
+- Integration with the blendanim pipeline
 - Progress tracking and logging
-- Error recovery with exponential backoff
+
+Typical workflow:
+1. Download animations using mixamo_anims_downloader browser scripts
+2. Use this module to validate and organize files
+3. Upload to GCS for pipeline processing
 
 Example usage:
-    >>> from src.downloader import download_animation
-    >>> result = download_animation(
-    ...     animation_id="123456",
-    ...     output_path="./animations/walk.fbx",
-    ...     format="fbx"
-    ... )
-    >>> if result.success:
-    ...     print(f"Downloaded to {result.file_path}")
+    >>> from src.downloader import validate_download
+    >>> # After downloading with browser script
+    >>> is_valid = validate_download("./downloads/walk.fbx")
+    >>> if is_valid:
+    ...     print("File is valid and ready for processing")
+
+See docs/MIXAMO_INTEGRATION.md for detailed integration guide.
 """
 
 import time

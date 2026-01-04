@@ -6,11 +6,14 @@
 
 This repository integrates multiple motion capture workflows:
 
-1. **Download** - Fetch Mixamo animations using `mixamo_anims_downloader`
-2. **Generate** - Create motion blends using `blendanim` (GANimator-based temporal conditioning)
-3. **Upload** - Store motions in Google Cloud Storage (GCS)
-4. **Track** - Sync metadata to BigQuery via `fivetran_connector_sdk` motionblend connector
-5. **Consume** - Use high-quality blends in `kijani-spiral` NPC engine
+1. **Download** - Fetch Mixamo animations using browser-based [mixamo_anims_downloader](https://github.com/RydlrCS/mixamo_anims_downloader)
+2. **Validate & Organize** - Verify downloaded files and organize for pipeline processing
+3. **Generate** - Create motion blends using [blendanim](https://github.com/RydlrCS/blendanim) (GANimator-based temporal conditioning)
+4. **Upload** - Store motions in Google Cloud Storage (GCS)
+5. **Track** - Sync metadata to BigQuery via `fivetran_connector_sdk` motionblend connector
+6. **Consume** - Use high-quality blends in [kijani-spiral](https://github.com/RydlrCS/kijani-spiral) NPC engine
+
+**Important**: This pipeline does NOT directly call Mixamo's API. Use the browser-based scripts from [mixamo_anims_downloader](https://github.com/RydlrCS/mixamo_anims_downloader) to download animations, then use this pipeline for validation, organization, blending, and upload. See [docs/MIXAMO_INTEGRATION.md](docs/MIXAMO_INTEGRATION.md) for detailed workflow.
 
 ## Architecture
 
@@ -80,29 +83,69 @@ See `config/README.md` for detailed configuration options.
 
 ## Usage
 
-Each pipeline stage can be run independently:
+### Recommended Workflow
+
+**Step 1: Download animations using browser scripts**
 
 ```bash
-# Step 1: Download Mixamo animations
-python scripts/01_download_mixamo.py --config config/download.yaml
+# 1. Go to https://www.mixamo.com and login
+# 2. Open browser console (F12)
+# 3. Find your character ID in network tab after downloading one animation
+# 4. Copy and run scripts from mixamo_anims_downloader:
+#    https://github.com/RydlrCS/mixamo_anims_downloader/blob/main/downloadAll.js
+```
 
-# Step 2: Generate motion blends
+**Step 2: Validate and organize downloaded files**
+
+```python
+from src.downloader import validate_download
+from pathlib import Path
+
+# Validate all downloaded FBX files
+downloads = Path("~/Downloads").expanduser()
+for fbx_file in downloads.glob("*.fbx"):
+    is_valid = validate_download(str(fbx_file))
+    print(f"{'✓' if is_valid else '✗'} {fbx_file.name}")
+
+# Move to organized structure
+# (Use scripts/01_organize_downloads.py)
+```
+
+**Step 3: Generate motion blends**
+
+```bash
 python scripts/02_generate_blends.py --config config/blend.yaml
+```
 
-# Step 3: Upload to GCS
-python scripts/03_upload_to_gcs.py --config config/upload.yaml
+**Step 4: Upload to GCS**
 
-# Step 4: Sync to BigQuery (uses Fivetran motionblend connector)
-# Configure via Fivetran dashboard
+```bash
+python scripts/03_upload_to_gcs.py \
+    --input ./data/seed \
+    --bucket gs://your-bucket/mocap/seed/
+```
 
-# Step 5: Query and use in kijani-spiral
+**Step 5: Sync to BigQuery (via Fivetran)**
+
+Configure the motionblend connector in Fivetran dashboard to track metadata.
+
+**Step 6: Export for kijani-spiral NPC engine**
+
+```bash
 python scripts/05_export_for_npc.py --config config/export.yaml
 ```
 
-Or run the full pipeline:
+For detailed integration guide, see [docs/MIXAMO_INTEGRATION.md](docs/MIXAMO_INTEGRATION.md).
+
+### Direct Pipeline Usage (Advanced)
+
+Or run the full pipeline after manual download:
 
 ```bash
-python scripts/run_pipeline.py --config config/pipeline.yaml
+# After downloading with mixamo_anims_downloader browser script
+python scripts/run_pipeline.py \
+    --input ~/Downloads/*.fbx \
+    --config config/pipeline.yaml
 ```
 
 ## Testing
