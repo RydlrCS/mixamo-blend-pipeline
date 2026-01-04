@@ -1,0 +1,369 @@
+# Mixamo Blend Pipeline - Kubernetes Deployment
+# Main application deployment configuration
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Deploys pipeline workers to Kubernetes cluster
+#   - Configures scaling, health checks, and resource limits
+#   - Integrates with ConfigMaps and Secrets
+#
+# Usage:
+#   kubectl apply -f k8s/deployment.yaml
+#   kubectl get deployment -n mixamo-pipeline
+#   kubectl logs -n mixamo-pipeline -l app=mixamo-pipeline -f
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mixamo-pipeline
+  namespace: mixamo-pipeline
+  labels:
+    app: mixamo-pipeline
+    app.kubernetes.io/name: mixamo-blend-pipeline
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/managed-by: kubectl
+    environment: production
+  annotations:
+    description: "Mixamo animation blending pipeline workers"
+    contact: "ted@rydlrcloudservices.com"
+    deployment.kubernetes.io/revision: "1"
+spec:
+  # =========================================================================
+  # Scaling Configuration
+  # =========================================================================
+  replicas: 3  # Number of worker pods (adjust based on workload)
+  
+  # Deployment strategy: RollingUpdate ensures zero-downtime deployments
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Max pods above desired count during update
+      maxUnavailable: 0  # Min pods available during update (ensures availability)
+  
+  # Minimum time for pod to be ready before considering it available
+  minReadySeconds: 10
+  
+  # Revision history limit for rollbacks
+  revisionHistoryLimit: 10
+  
+  # =========================================================================
+  # Pod Selection
+  # =========================================================================
+  selector:
+    matchLabels:
+      app: mixamo-pipeline
+      app.kubernetes.io/name: mixamo-blend-pipeline
+  
+  # =========================================================================
+  # Pod Template
+  # =========================================================================
+  template:
+    metadata:
+      labels:
+        app: mixamo-pipeline
+        app.kubernetes.io/name: mixamo-blend-pipeline
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/version: "0.1.0"
+        environment: production
+      annotations:
+        # Prometheus scraping annotations
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        
+        # Force pod restart on config/secret changes
+        checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
+        checksum/secret: "{{ include (print $.Template.BasePath \"/secret.yaml\") . | sha256sum }}"
+    
+    spec:
+      # =====================================================================
+      # Service Account (for Workload Identity on GKE)
+      # =====================================================================
+      # Uncomment and configure for GKE Workload Identity:
+      # serviceAccountName: mixamo-pipeline-sa
+      
+      # =====================================================================
+      # Security Context (Pod-level)
+      # =====================================================================
+      securityContext:
+        # Run as non-root user
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        
+        # Filesystem security
+        fsGroupChangePolicy: "OnRootMismatch"
+        
+        # Security enhancements
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # =====================================================================
+      # Containers
+      # =====================================================================
+      containers:
+      - name: pipeline-worker
+        image: mixamo-blend-pipeline:0.1.0
+        imagePullPolicy: IfNotPresent  # Use Always for :latest tags
+        
+        # -------------------------------------------------------------------
+        # Container Security Context
+        # -------------------------------------------------------------------
+        securityContext:
+          # Prevent privilege escalation
+          allowPrivilegeEscalation: false
+          
+          # Drop all capabilities and add only required ones
+          capabilities:
+            drop:
+            - ALL
+          
+          # Read-only root filesystem (except mounted volumes)
+          readOnlyRootFilesystem: true
+          
+          # Run as non-root
+          runAsNonRoot: true
+          runAsUser: 1000
+        
+        # -------------------------------------------------------------------
+        # Environment Variables
+        # -------------------------------------------------------------------
+        env:
+        # Environment from ConfigMap
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: pipeline-config
+              key: LOG_LEVEL
+        
+        - name: LOG_FORMAT
+          valueFrom:
+            configMapKeyRef:
+              name: pipeline-config
+              key: LOG_FORMAT
+        
+        - name: BQ_DATASET
+          valueFrom:
+            configMapKeyRef:
+              name: pipeline-config
+              key: BQ_DATASET
+        
+        - name: UPLOAD_TIMEOUT_SECONDS
+          valueFrom:
+            configMapKeyRef:
+              name: pipeline-config
+              key: UPLOAD_TIMEOUT_SECONDS
+        
+        - name: MAX_RETRIES
+          valueFrom:
+            configMapKeyRef:
+              name: pipeline-config
+              key: MAX_RETRIES
+        
+        # Environment from Secrets
+        - name: GCS_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: pipeline-secrets
+              key: GCS_BUCKET
+        
+        - name: BQ_PROJECT
+          valueFrom:
+            secretKeyRef:
+              name: pipeline-secrets
+              key: BQ_PROJECT
+        
+        - name: ELASTICSEARCH_URL
+          valueFrom:
+            secretKeyRef:
+              name: pipeline-secrets
+              key: ELASTICSEARCH_URL
+              optional: true
+        
+        - name: ES_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: pipeline-secrets
+              key: ES_API_KEY
+              optional: true
+        
+        # Pod metadata
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        
+        # -------------------------------------------------------------------
+        # Resource Limits
+        # -------------------------------------------------------------------
+        resources:
+          requests:
+            # Minimum resources guaranteed to the container
+            cpu: 500m      # 0.5 CPU cores
+            memory: 512Mi  # 512 MB RAM
+          
+          limits:
+            # Maximum resources the container can use
+            cpu: 2000m     # 2 CPU cores
+            memory: 2Gi    # 2 GB RAM
+        
+        # -------------------------------------------------------------------
+        # Volume Mounts
+        # -------------------------------------------------------------------
+        volumeMounts:
+        # Temporary directory for processing (writable)
+        - name: tmp-dir
+          mountPath: /tmp
+        
+        # Data directory for animation files (writable)
+        - name: data-dir
+          mountPath: /app/data
+        
+        # Logs directory (writable)
+        - name: logs-dir
+          mountPath: /app/logs
+        
+        # Service account credentials (if using JSON key instead of Workload Identity)
+        # - name: gcp-credentials
+        #   mountPath: /app/credentials
+        #   readOnly: true
+        
+        # -------------------------------------------------------------------
+        # Health Checks
+        # -------------------------------------------------------------------
+        # Liveness probe: Restart container if failing
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import src.blender, src.uploader, src.downloader; print('OK')"
+          initialDelaySeconds: 30   # Wait 30s after container start
+          periodSeconds: 30         # Check every 30s
+          timeoutSeconds: 5         # Timeout after 5s
+          successThreshold: 1       # 1 success = healthy
+          failureThreshold: 3       # 3 failures = restart container
+        
+        # Readiness probe: Remove from service if failing
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import src.blender, src.uploader, src.downloader; print('OK')"
+          initialDelaySeconds: 10   # Wait 10s after container start
+          periodSeconds: 10         # Check every 10s
+          timeoutSeconds: 3         # Timeout after 3s
+          successThreshold: 1       # 1 success = ready
+          failureThreshold: 3       # 3 failures = not ready
+        
+        # Startup probe: Allow extra time for initial startup
+        startupProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import src.blender, src.uploader, src.downloader; print('OK')"
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 12      # 60s total (12 * 5s)
+        
+        # -------------------------------------------------------------------
+        # Lifecycle Hooks
+        # -------------------------------------------------------------------
+        lifecycle:
+          # PreStop: Graceful shutdown before SIGTERM
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                # Log graceful shutdown
+                echo "$(date): Received SIGTERM, initiating graceful shutdown" >> /app/logs/shutdown.log
+                # Sleep briefly to allow in-flight requests to complete
+                sleep 10
+      
+      # =====================================================================
+      # Volumes
+      # =====================================================================
+      volumes:
+      # Temporary directory (emptyDir - ephemeral)
+      - name: tmp-dir
+        emptyDir:
+          sizeLimit: 1Gi
+      
+      # Data directory (emptyDir - ephemeral)
+      # For persistent storage, use PersistentVolumeClaim
+      - name: data-dir
+        emptyDir:
+          sizeLimit: 5Gi
+      
+      # Logs directory (emptyDir - ephemeral)
+      - name: logs-dir
+        emptyDir:
+          sizeLimit: 1Gi
+      
+      # GCP credentials (if using JSON key)
+      # - name: gcp-credentials
+      #   secret:
+      #     secretName: gcp-service-account-key
+      #     items:
+      #     - key: key.json
+      #       path: key.json
+      
+      # =====================================================================
+      # Pod Scheduling
+      # =====================================================================
+      # Restart policy
+      restartPolicy: Always
+      
+      # DNS policy
+      dnsPolicy: ClusterFirst
+      
+      # Termination grace period (time to wait before forcing shutdown)
+      terminationGracePeriodSeconds: 30
+      
+      # Pod affinity/anti-affinity (distribute pods across nodes)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - mixamo-pipeline
+              topologyKey: kubernetes.io/hostname
+      
+      # Tolerations (allow scheduling on tainted nodes if needed)
+      # tolerations:
+      # - key: "workload-type"
+      #   operator: "Equal"
+      #   value: "pipeline"
+      #   effect: "NoSchedule"

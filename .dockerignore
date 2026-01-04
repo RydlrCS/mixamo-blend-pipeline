@@ -1,0 +1,200 @@
+# Mixamo Blend Pipeline - Docker Ignore
+# Excludes files from Docker build context
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Reduce Docker build context size
+#   - Prevent sensitive files from entering container
+#   - Speed up build process by excluding unnecessary files
+
+# ============================================================================
+# Version Control
+# ============================================================================
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# ============================================================================
+# Development Tools
+# ============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pytype
+.pytype/
+
+# ============================================================================
+# Documentation (build artifacts only)
+# ============================================================================
+docs/_build/
+docs/.doctrees/
+site/
+
+# Keep source documentation
+!docs/*.md
+!README.md
+!LICENSE
+
+# ============================================================================
+# Environment and Secrets
+# ============================================================================
+.env
+.env.*
+*.env
+.envrc
+
+# Service account credentials
+*.json
+!pyproject.json
+credentials/
+secrets/
+
+# ============================================================================
+# Data and Logs (exclude from container)
+# ============================================================================
+data/
+logs/
+*.log
+*.bvh
+*.fbx
+*.dae
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# ============================================================================
+# Docker and Container
+# ============================================================================
+Dockerfile.*
+docker-compose*.yml
+!docker-compose.yml
+.dockerignore
+
+# Kubernetes manifests (not needed in container)
+k8s/
+kubernetes/
+helm/
+*.yaml
+!config/**/*.yaml
+
+# ============================================================================
+# CI/CD
+# ============================================================================
+.gitlab-ci.yml
+.circleci/
+.travis.yml
+azure-pipelines.yml
+Jenkinsfile
+
+# ============================================================================
+# Dependencies (will be installed during build)
+# ============================================================================
+node_modules/
+bower_components/
+
+# ============================================================================
+# OS Files
+# ============================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================================
+# Archives
+# ============================================================================
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ============================================================================
+# IDE and Editor
+# ============================================================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# Testing and Quality
+# ============================================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ============================================================================
+# Misc
+# ============================================================================
+TODO.md
+NOTES.md
+scratch/
+experiments/

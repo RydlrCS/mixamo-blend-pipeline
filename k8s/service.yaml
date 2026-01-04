@@ -1,0 +1,83 @@
+# Mixamo Blend Pipeline - Kubernetes Service
+# Exposes pipeline pods for internal communication
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Provides stable endpoint for pipeline workers
+#   - Enables load balancing across pods
+#   - Supports service discovery and health checks
+#
+# Usage:
+#   kubectl apply -f k8s/service.yaml
+#   kubectl get service -n mixamo-pipeline
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mixamo-pipeline
+  namespace: mixamo-pipeline
+  labels:
+    app: mixamo-pipeline
+    app.kubernetes.io/name: mixamo-blend-pipeline
+    app.kubernetes.io/component: service
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Pipeline worker service"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  # Service type: ClusterIP (internal only)
+  # Use LoadBalancer or NodePort for external access
+  type: ClusterIP
+  
+  # Session affinity (optional - for sticky sessions)
+  # sessionAffinity: ClientIP
+  
+  # Selector to route traffic to pods
+  selector:
+    app: mixamo-pipeline
+    app.kubernetes.io/name: mixamo-blend-pipeline
+  
+  # Ports exposed by the service
+  ports:
+  # Health check / API port
+  - name: http
+    protocol: TCP
+    port: 8080        # Service port
+    targetPort: 8080  # Container port
+  
+  # Prometheus metrics port
+  - name: metrics
+    protocol: TCP
+    port: 9090
+    targetPort: 9090
+
+---
+# ============================================================================
+# Headless Service (for StatefulSet or direct pod access)
+# ============================================================================
+# Uncomment if you need direct pod-to-pod communication
+# or are using a StatefulSet instead of Deployment
+#
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: mixamo-pipeline-headless
+#   namespace: mixamo-pipeline
+#   labels:
+#     app: mixamo-pipeline
+#     app.kubernetes.io/name: mixamo-blend-pipeline
+#     app.kubernetes.io/component: headless-service
+# spec:
+#   clusterIP: None  # Headless service
+#   selector:
+#     app: mixamo-pipeline
+#   ports:
+#   - name: http
+#     port: 8080
+#     targetPort: 8080

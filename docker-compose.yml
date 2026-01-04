@@ -1,0 +1,148 @@
+# Mixamo Blend Pipeline - Docker Compose Configuration
+# Local development and testing environment
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Provides local development environment with all dependencies
+#   - Enables easy testing without cloud deployment
+#   - Supports volume mounting for rapid code iteration
+#
+# Usage:
+#   docker-compose up -d                 # Start services in background
+#   docker-compose logs -f pipeline      # View logs
+#   docker-compose exec pipeline bash    # Enter container shell
+#   docker-compose down                  # Stop and remove containers
+
+version: '3.8'
+
+services:
+  # =========================================================================
+  # Main Pipeline Service
+  # =========================================================================
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        # Build arguments can be customized here
+        PYTHON_VERSION: "3.11"
+    
+    image: mixamo-blend-pipeline:local
+    container_name: mixamo-pipeline
+    
+    # Restart policy for development
+    restart: unless-stopped
+    
+    # Environment variables for local development
+    # Override these in .env file (not committed to git)
+    environment:
+      # Google Cloud configuration
+      - GCS_BUCKET=${GCS_BUCKET:-local-dev-bucket}
+      - BQ_PROJECT=${BQ_PROJECT:-local-dev-project}
+      - BQ_DATASET=${BQ_DATASET:-RAW_DEV}
+      
+      # Elasticsearch configuration (optional)
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-}
+      - ES_API_KEY=${ES_API_KEY:-}
+      - ES_INDEX=${ES_INDEX:-mb_blends_v1}
+      
+      # Pipeline configuration
+      - UPLOAD_TIMEOUT_SECONDS=${UPLOAD_TIMEOUT_SECONDS:-300}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+      # Development mode flags
+      - DEVELOPMENT_MODE=true
+      - PYTHONUNBUFFERED=1
+    
+    # Volume mounts for development
+    # Allows code changes without rebuilding container
+    volumes:
+      # Mount source code for live development
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+      - ./config:/app/config:ro
+      
+      # Mount data directories for persistence
+      - ./data:/app/data
+      - ./logs:/app/logs
+      
+      # Mount Google Cloud credentials (if using service account)
+      # Uncomment and set path to your service account JSON file
+      # - ${GOOGLE_APPLICATION_CREDENTIALS}:/app/credentials/gcp-key.json:ro
+    
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "python", "-c", "import src.blender, src.uploader, src.downloader; print('OK')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits for local development
+    # Prevents container from consuming all host resources
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Network configuration
+    networks:
+      - pipeline-network
+    
+    # Default command - override with docker-compose run
+    # Example: docker-compose run pipeline python scripts/blend.py walk.bvh run.bvh
+    command: ["tail", "-f", "/dev/null"]
+  
+  # =========================================================================
+  # Local Storage Service (Optional - for testing without GCS)
+  # =========================================================================
+  # Uncomment to use local MinIO as GCS replacement for development
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: mixamo-storage
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   environment:
+  #     - MINIO_ROOT_USER=minioadmin
+  #     - MINIO_ROOT_PASSWORD=minioadmin
+  #   volumes:
+  #     - minio-data:/data
+  #   command: server /data --console-address ":9001"
+  #   networks:
+  #     - pipeline-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  pipeline-network:
+    driver: bridge
+    name: mixamo-pipeline-network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  # Persistent volume for MinIO data (if enabled)
+  # minio-data:
+  #   driver: local
+  
+  # Named volumes for data persistence
+  pipeline-data:
+    driver: local
+  pipeline-logs:
+    driver: local

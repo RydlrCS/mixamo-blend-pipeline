@@ -1,0 +1,152 @@
+# Mixamo Blend Pipeline - Horizontal Pod Autoscaler
+# Automatically scales pipeline workers based on CPU/memory usage
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Automatically scales worker pods based on workload
+#   - Maintains optimal resource utilization
+#   - Handles traffic spikes and reduces costs during low usage
+#
+# Requirements:
+#   - Metrics Server must be installed in cluster
+#   - Resource requests must be defined in Deployment
+#
+# Usage:
+#   kubectl apply -f k8s/hpa.yaml
+#   kubectl get hpa -n mixamo-pipeline
+#   kubectl describe hpa -n mixamo-pipeline mixamo-pipeline-hpa
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mixamo-pipeline-hpa
+  namespace: mixamo-pipeline
+  labels:
+    app: mixamo-pipeline
+    app.kubernetes.io/name: mixamo-blend-pipeline
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Autoscaler for pipeline workers"
+spec:
+  # Target deployment to scale
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mixamo-pipeline
+  
+  # Minimum number of replicas (never scale below this)
+  minReplicas: 2
+  
+  # Maximum number of replicas (never scale above this)
+  maxReplicas: 20
+  
+  # Metrics to monitor for scaling decisions
+  metrics:
+  # CPU utilization target
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        # Scale up when average CPU exceeds 70%
+        averageUtilization: 70
+  
+  # Memory utilization target
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        # Scale up when average memory exceeds 80%
+        averageUtilization: 80
+  
+  # Optional: Custom metrics (requires custom metrics API)
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: queue_depth
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "100"
+  
+  # Scaling behavior configuration
+  behavior:
+    # Scale up behavior
+    scaleUp:
+      # Stabilization window: Wait 60s before scaling up again
+      stabilizationWindowSeconds: 60
+      
+      # Policies for scaling up
+      policies:
+      # Allow adding up to 4 pods per minute
+      - type: Pods
+        value: 4
+        periodSeconds: 60
+      
+      # Allow increasing by up to 100% per minute
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      
+      # Select policy that allows maximum scale-up
+      selectPolicy: Max
+    
+    # Scale down behavior
+    scaleDown:
+      # Stabilization window: Wait 300s (5min) before scaling down
+      # This prevents flapping during variable workloads
+      stabilizationWindowSeconds: 300
+      
+      # Policies for scaling down
+      policies:
+      # Remove at most 1 pod per 60s
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      
+      # Decrease by at most 10% per minute
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      
+      # Select policy that allows minimum scale-down (conservative)
+      selectPolicy: Min
+
+---
+# ============================================================================
+# Notes on HPA Configuration
+# ============================================================================
+#
+# Monitoring HPA:
+#   kubectl get hpa -n mixamo-pipeline -w
+#   kubectl describe hpa -n mixamo-pipeline mixamo-pipeline-hpa
+#
+# Testing autoscaling:
+#   # Generate load to trigger scale-up
+#   kubectl run -n mixamo-pipeline load-generator --image=busybox:1.28 \
+#     --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://mixamo-pipeline:8080; done"
+#
+#   # Watch scaling in action
+#   kubectl get hpa -n mixamo-pipeline -w
+#
+#   # Clean up load generator
+#   kubectl delete pod -n mixamo-pipeline load-generator
+#
+# Custom metrics:
+#   For production, consider custom metrics like:
+#   - Queue depth (number of pending jobs)
+#   - Request rate (requests per second)
+#   - Processing latency (p95 response time)
+#   - Active connections
+#
+# Prerequisites:
+#   # Verify metrics-server is running
+#   kubectl get deployment metrics-server -n kube-system
+#
+#   # If not installed, install metrics-server:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml

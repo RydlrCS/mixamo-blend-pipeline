@@ -1,0 +1,96 @@
+# Mixamo Blend Pipeline - Kubernetes ConfigMap
+# Non-sensitive configuration for pipeline
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Stores non-sensitive configuration data
+#   - Enables configuration updates without container rebuilds
+#   - Provides environment-specific settings
+#
+# Usage:
+#   kubectl apply -f k8s/configmap.yaml
+#   kubectl get configmap -n mixamo-pipeline pipeline-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  namespace: mixamo-pipeline
+  labels:
+    app.kubernetes.io/name: mixamo-blend-pipeline
+    app.kubernetes.io/component: config
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Pipeline configuration settings"
+data:
+  # =========================================================================
+  # Pipeline Configuration
+  # =========================================================================
+  
+  # BigQuery dataset for metadata storage
+  BQ_DATASET: "RAW_DEV"
+  
+  # Elasticsearch index name
+  ES_INDEX: "mb_blends_v1"
+  
+  # Upload timeout in seconds
+  UPLOAD_TIMEOUT_SECONDS: "300"
+  
+  # Logging configuration
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  
+  # Processing configuration
+  MAX_CONCURRENT_UPLOADS: "10"
+  MAX_PROCESSING_TIME_SEC: "600"
+  WORKER_POOL_SIZE: "4"
+  
+  # File size limits
+  MAX_FILE_SIZE_MB: "500"
+  MIN_FILE_SIZE_BYTES: "1024"
+  
+  # Retry configuration
+  MAX_RETRIES: "3"
+  RETRY_DELAY_SECONDS: "2.0"
+  RETRY_BACKOFF_MULTIPLIER: "2.0"
+  RETRY_MAX_DELAY_SECONDS: "60.0"
+  
+  # Health check configuration
+  HEALTH_CHECK_ENABLED: "true"
+  HEALTH_CHECK_PORT: "8080"
+  
+  # Metrics configuration
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  METRICS_PATH: "/metrics"
+  
+  # Feature flags
+  ENABLE_ASYNC_IO: "true"
+  ENABLE_CONNECTION_POOLING: "true"
+  ENABLE_CIRCUIT_BREAKER: "true"
+  
+  # GCS folder structure
+  GCS_SEED_FOLDER: "seed/"
+  GCS_BLEND_FOLDER: "blend/"
+  GCS_OUTPUT_FOLDER: "output/"
+  
+  # Animation processing defaults
+  DEFAULT_FPS: "30"
+  DEFAULT_BLEND_MODE: "single-shot"
+  DEFAULT_TRANSITION_FRAMES: "30"
+  
+  # =========================================================================
+  # Application Settings
+  # =========================================================================
+  
+  # Python settings
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  
+  # Application mode
+  ENVIRONMENT: "production"
+  DEBUG: "false"

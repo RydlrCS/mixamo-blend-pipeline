@@ -1,0 +1,34 @@
+# Mixamo Blend Pipeline - Kubernetes Namespace
+# Isolates pipeline resources from other workloads
+#
+# Author: Ted Iro
+# Organization: Rydlr Cloud Services Ltd (github.com/rydlrcs)
+# Date: January 4, 2026
+#
+# Purpose:
+#   - Creates dedicated namespace for pipeline resources
+#   - Enables resource quotas and network policies per namespace
+#   - Facilitates access control and monitoring
+#
+# Usage:
+#   kubectl apply -f k8s/namespace.yaml
+#   kubectl get namespace mixamo-pipeline
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mixamo-pipeline
+  labels:
+    name: mixamo-pipeline
+    app.kubernetes.io/name: mixamo-blend-pipeline
+    app.kubernetes.io/component: namespace
+    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/created-by: rydlr-cloud-services
+    environment: production
+    owner: ted-iro
+    organization: rydlr-cloud-services
+  annotations:
+    description: "Mixamo animation blending pipeline resources"
+    contact: "ted@rydlrcloudservices.com"
+    documentation: "https://github.com/rydlrcs/mixamo-blend-pipeline"

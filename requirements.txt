@@ -23,5 +23,8 @@ types-requests>=2.31.0
 # Logging
 coloredlogs>=15.0.0
 
+# System monitoring
+psutil>=5.9.0
+
 # Spell checking
 pyspelling>=2.10.0
