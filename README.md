@@ -79,7 +79,32 @@ python -m pytest tests/
 
 ## Configuration
 
-See `config/README.md` for detailed configuration options.
+Create a `.env` file from the template:
+
+```bash
+cp .env.example .env
+# Edit .env with your GCS bucket, BigQuery project, etc.
+```
+
+See `.env.example` for required variables and [docs/CLI.md](docs/CLI.md) for detailed configuration guide.
+
+## Quick Start (CLI)
+
+```bash
+# Download animation (placeholder - see MIXAMO_INTEGRATION.md)
+python scripts/download.py -c ybot -a idle
+
+# Blend two animations (70% walk, 30% run)
+python scripts/blend.py walk.bvh run.bvh --ratio 0.3 -o blended.bvh
+
+# Upload to GCS (requires .env configuration)
+python scripts/upload.py blended.bvh --folder blend/ --metadata source=mixamo
+
+# Full pipeline orchestration
+python scripts/pipeline.py -c ybot -a "walk,run" -r 0.5 --upload-folder experimental/
+```
+
+See [docs/CLI.md](docs/CLI.md) for comprehensive CLI documentation.
 
 ## Usage
 
@@ -97,32 +122,55 @@ See `config/README.md` for detailed configuration options.
 
 **Step 2: Validate and organize downloaded files**
 
-```python
+```bash
+# Using CLI (placeholder implementation)
+python scripts/download.py -c ybot -a walk,run,jump
+
+# Or validate manually with Python API
 from src.downloader import validate_download
 from pathlib import Path
 
-# Validate all downloaded FBX files
 downloads = Path("~/Downloads").expanduser()
 for fbx_file in downloads.glob("*.fbx"):
     is_valid = validate_download(str(fbx_file))
     print(f"{'✓' if is_valid else '✗'} {fbx_file.name}")
-
-# Move to organized structure
-# (Use scripts/01_organize_downloads.py)
 ```
 
 **Step 3: Generate motion blends**
 
 ```bash
-python scripts/02_generate_blends.py --config config/blend.yaml
+# Using CLI
+python scripts/blend.py walk.bvh run.bvh -o walk_run.bvh --ratio 0.5 --method linear
+
+# Or use Python API
+from src.blender import blend_motions, BlendConfig
+
+config = BlendConfig(
+    input1_path="walk.bvh",
+    input2_path="run.bvh",
+    blend_ratio=0.5,
+    method="linear"
+)
+result = blend_motions(config, output_path="walk_run.bvh")
 ```
 
 **Step 4: Upload to GCS**
 
 ```bash
-python scripts/03_upload_to_gcs.py \
-    --input ./data/seed \
-    --bucket gs://your-bucket/mocap/seed/
+# Using CLI (actual GCS SDK integration)
+python scripts/upload.py walk_run.bvh --folder blend/ --metadata source=mixamo method=linear
+
+# Or use Python API  
+from src.uploader import upload_file, UploadConfig
+from src.utils.config import get_config
+
+config = get_config()  # Loads from .env
+upload_config = UploadConfig(
+    bucket_name=config.gcs_bucket,
+    destination_folder="blend/",
+    metadata={"source": "mixamo", "method": "linear"}
+)
+result = upload_file("walk_run.bvh", upload_config)
 ```
 
 **Step 5: Sync to BigQuery (via Fivetran)**
