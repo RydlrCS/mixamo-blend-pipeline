@@ -15,7 +15,7 @@ Repository = "https://github.com/RydlrCS/mixamo-blend-pipeline"
 
 [tool.black]
 line-length = 99
-target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
+target-version = ['py39', 'py310', 'py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(

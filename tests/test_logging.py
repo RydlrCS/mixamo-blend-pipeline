@@ -28,24 +28,24 @@ def test_get_logger_returns_logger_instance() -> None:
 
 def test_log_function_call_decorator_logs_entry_and_exit() -> None:
     """Test that log_function_call decorator logs function entry and exit."""
-    
+
     @log_function_call
     def sample_function(x: int, y: int) -> int:
         """Sample function for testing decorator."""
         return x + y
-    
+
     result = sample_function(2, 3)
     assert result == 5
 
 
 def test_log_function_call_decorator_handles_exceptions() -> None:
     """Test that log_function_call decorator properly logs exceptions."""
-    
+
     @log_function_call
     def failing_function() -> None:
         """Function that raises an exception."""
         raise ValueError("Test exception")
-    
+
     try:
         failing_function()
         assert False, "Exception should have been raised"
