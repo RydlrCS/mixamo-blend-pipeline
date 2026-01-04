@@ -1,0 +1,26 @@
+version: "1.0"
+workflow: download_batch
+
+# Batch download multiple animations from Mixamo
+downloads:
+  - animation_id: "walk_forward"
+    output: seed/walk.fbx
+    format: fbx
+
+  - animation_id: "running"
+    output: seed/run.fbx
+    format: fbx
+
+  - animation_id: "idle_standing"
+    output: seed/idle.fbx
+    format: fbx
+
+  - animation_id: "jump_up"
+    output: seed/jump.bvh
+    format: bvh
+
+# Optional: Organize into character folders
+character: ybot
+
+# Optional: Validate after download
+validate: true

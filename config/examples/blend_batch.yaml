@@ -1,0 +1,33 @@
+version: "1.0"
+workflow: blend_batch
+
+# Batch blend multiple animation pairs
+blends:
+  - name: walk_to_run
+    input1: seed/walk.bvh
+    input2: seed/run.bvh
+    ratio: 0.5
+    method: linear
+    output: blend/walk_run.bvh
+
+  - name: idle_to_jump
+    input1: seed/idle.bvh
+    input2: seed/jump.bvh
+    ratio: 0.3
+    method: snn
+    output: blend/idle_jump.bvh
+
+  - name: crouch_to_stand
+    input1: seed/crouch.bvh
+    input2: seed/stand.bvh
+    ratio: 0.7
+    method: linear
+    output: blend/crouch_stand.bvh
+
+# Upload configuration (optional)
+upload:
+  folder: blend/
+  metadata:
+    source: mixamo
+    pipeline: batch
+    created_date: "2026-01-04"

@@ -1,0 +1,35 @@
+version: "1.0"
+workflow: upload_batch
+
+# Batch upload multiple files to GCS
+uploads:
+  - file: blend/walk_run.bvh
+    folder: blend/
+    metadata:
+      source: mixamo
+      method: linear
+      ratio: 0.5
+
+  - file: blend/idle_jump.bvh
+    folder: blend/
+    metadata:
+      source: mixamo
+      method: snn
+      ratio: 0.3
+
+  - file: seed/walk.fbx
+    folder: seed/
+    metadata:
+      source: mixamo
+      type: source
+
+  - file: seed/run.fbx
+    folder: seed/
+    metadata:
+      source: mixamo
+      type: source
+
+# Global upload settings
+settings:
+  make_public: false
+  timeout_seconds: 300

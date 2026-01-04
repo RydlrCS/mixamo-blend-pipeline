@@ -26,6 +26,7 @@ from src.downloader import download_animation, DownloadConfig  # noqa: E402
 from src.blender import blend_animations, BlendConfig  # noqa: E402
 from src.uploader import upload_file, UploadConfig  # noqa: E402
 from src.utils.config import get_config  # noqa: E402
+from src.utils.config_loader import load_config, validate_config  # noqa: E402
 from src.utils.logging import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
@@ -50,9 +51,19 @@ Examples:
   # Download and blend (skip upload)
   %(prog)s -c ybot -a1 walk -a2 run --skip-upload
 
+  # Use configuration file for batch processing
+  %(prog)s --config config/examples/blend_batch.yaml
+
   # Full pipeline with custom output
   %(prog)s -c maximo -a1 idle -a2 jump -r 0.3 -o custom_blend.bvh
         """,
+    )
+
+    # Configuration file
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to YAML configuration file for batch processing",
     )
 
     # Pipeline control
@@ -300,9 +311,148 @@ def run_upload_step(args, file_path: str) -> bool:
     return True
 
 
+def run_from_config(config_path: str, verbose: bool = False) -> int:
+    """
+    Run batch workflow from configuration file.
+
+    Args:
+        config_path: Path to YAML configuration file
+        verbose: Enable verbose logging
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    if verbose:
+        import logging
+
+        logging.getLogger("src").setLevel(logging.DEBUG)
+
+    try:
+        # Load and validate configuration
+        logger.info(f"Loading configuration from: {config_path}")
+        config = load_config(config_path)
+
+        errors = validate_config(config)
+        if errors:
+            print("❌ Configuration validation failed:")
+            for error in errors:
+                print(f"   • {error}")
+            return 1
+
+        print("=" * 60)
+        print("MIXAMO BLEND PIPELINE (CONFIG MODE)")
+        print(f"Workflow: {config['workflow']}")
+        print("=" * 60)
+
+        # Execute workflow based on type
+        workflow = config["workflow"]
+
+        if workflow == "blend_batch":
+            return run_blend_batch_workflow(config)
+        elif workflow == "download_batch":
+            logger.warning("download_batch workflow not yet implemented")
+            print("❌ download_batch workflow not yet implemented")
+            return 1
+        elif workflow == "upload_batch":
+            logger.warning("upload_batch workflow not yet implemented")
+            print("❌ upload_batch workflow not yet implemented")
+            return 1
+        elif workflow == "full_pipeline":
+            logger.warning("full_pipeline workflow not yet implemented")
+            print("❌ full_pipeline workflow not yet implemented")
+            return 1
+        else:
+            print(f"❌ Unknown workflow type: {workflow}")
+            return 1
+
+    except FileNotFoundError as e:
+        print(f"❌ Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        logger.error(f"Configuration error: {e}", exc_info=True)
+        print(f"❌ Failed to load configuration: {e}")
+        return 1
+
+
+def run_blend_batch_workflow(config: dict) -> int:
+    """
+    Execute blend_batch workflow from configuration.
+
+    Args:
+        config: Validated configuration dictionary
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    blends = config.get("blends", [])
+    if not blends:
+        print("❌ No blends defined in configuration")
+        return 1
+
+    print(f"\n📋 Processing {len(blends)} blends...")
+
+    successful = 0
+    failed = 0
+
+    for i, blend in enumerate(blends, 1):
+        name = blend.get("name", f"blend_{i}")
+        input1 = blend["input1"]
+        input2 = blend["input2"]
+        output = blend["output"]
+        ratio = blend.get("ratio", 0.5)
+        method = blend.get("method", "linear")
+
+        print(f"\n[{i}/{len(blends)}] {name}")
+        print(f"   Input1: {input1}")
+        print(f"   Input2: {input2}")
+        print(f"   Output: {output}")
+        print(f"   Ratio: {ratio} ({ratio*100:.0f}% / {(1-ratio)*100:.0f}%)")
+        print(f"   Method: {method}")
+
+        try:
+            # Create blend config
+            blend_config = BlendConfig(
+                input1_path=input1,
+                input2_path=input2,
+                blend_ratio=ratio,
+                method=method,
+            )
+
+            # Execute blend
+            result = blend_animations(blend_config, output)
+
+            if result.success:
+                print(f"   ✅ Success")
+                successful += 1
+            else:
+                print(f"   ❌ Failed: {result.error}")
+                failed += 1
+
+        except Exception as e:
+            logger.error(f"Blend failed for {name}: {e}", exc_info=True)
+            print(f"   ❌ Error: {e}")
+            failed += 1
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("BATCH BLEND SUMMARY")
+    print("=" * 60)
+    print(f"Total: {len(blends)}")
+    print(f"✅ Successful: {successful}")
+    if failed > 0:
+        print(f"❌ Failed: {failed}")
+    print("=" * 60)
+
+    return 0 if failed == 0 else 1
+
+
 def main():
     """Main entry point for pipeline orchestrator."""
     args = parse_args()
+
+    # If config file provided, run batch workflow
+    if args.config:
+        return run_from_config(args.config, args.verbose)
 
     # Configure logging
     if args.verbose:
