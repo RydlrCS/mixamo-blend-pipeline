@@ -9,11 +9,13 @@ Usage:
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add src to path before imports
+_project_root = Path(__file__).parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
-from src.utils.config import get_config
-from src.uploader import upload_file, UploadConfig
+from src.utils.config import get_config  # noqa: E402
+from src.uploader import upload_file, UploadConfig  # noqa: E402
 
 
 def main():
